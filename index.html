@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Gestor de Gastos</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      color: #333;
+    }
+
+    header {
+      background: #4f46e5;
+      color: white;
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    header h1 { font-size: 1.3rem; }
+
+    #btn-logout {
+      background: transparent;
+      border: 1px solid white;
+      color: white;
+      padding: 0.4rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .container {
+      max-width: 700px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+    }
+
+    .card h2 {
+      margin-bottom: 1rem;
+      font-size: 1rem;
+      color: #4f46e5;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 0.6rem 0.8rem;
+      margin-bottom: 0.8rem;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 0.95rem;
+    }
+
+    button.primary {
+      width: 100%;
+      padding: 0.7rem;
+      background: #4f46e5;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+
+    button.primary:hover { background: #4338ca; }
+
+    .gasto-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.7rem 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .gasto-item:last-child { border-bottom: none; }
+
+    .gasto-desc { font-weight: 500; }
+    .gasto-cat { font-size: 0.8rem; color: #888; }
+    .gasto-monto { font-weight: 700; color: #4f46e5; }
+
+    #auth-section, #app-section { display: none; }
+
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 0.6rem;
+      border: 2px solid #4f46e5;
+      background: white;
+      color: #4f46e5;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .tab.active {
+      background: #4f46e5;
+      color: white;
+    }
+
+    #resumen-section, #gastos-section { display: none; }
+
+    .resumen-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .resumen-card {
+      background: #f5f3ff;
+      border-radius: 10px;
+      padding: 1rem;
+      text-align: center;
+    }
+
+    .resumen-card .valor {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #4f46e5;
+    }
+
+    .resumen-card .label {
+      font-size: 0.8rem;
+      color: #888;
+      margin-top: 0.3rem;
+    }
+
+    #mensaje {
+      text-align: center;
+      padding: 0.5rem;
+      margin-bottom: 1rem;
+      border-radius: 8px;
+      display: none;
+    }
+
+    #mensaje.ok { background: #d1fae5; color: #065f46; display: block; }
+    #mensaje.error { background: #fee2e2; color: #991b1b; display: block; }
+  </style>
+</head>
+<body>
+
+<!-- AUTH -->
+<div id="auth-section" class="container">
+  <div class="card" style="margin-top:3rem;">
+    <h2>💰 Gestor de Gastos</h2>
+    <div id="mensaje"></div>
+    <input type="email" id="auth-email" placeholder="Tu email" />
+    <input type="password" id="auth-password" placeholder="Tu contraseña" />
+    <button class="primary" onclick="login()">Iniciar sesión</button>
+    <p style="text-align:center; margin-top:0.8rem; font-size:0.9rem;">
+      ¿No tenés cuenta? <a href="#" onclick="register()">Registrate</a>
+    </p>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app-section">
+  <header>
+    <h1>💰 Gestor de Gastos</h1>
+    <button id="btn-logout" onclick="logout()">Cerrar sesión</button>
+  </header>
+
+  <div class="container">
+    <div id="mensaje"></div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="mostrarTab('gastos')">Mis Gastos</button>
+      <button class="tab" onclick="mostrarTab('resumen')">Resumen</button>
+    </div>
+
+    <!-- GASTOS -->
+    <div id="gastos-section">
+      <div class="card">
+        <h2>Nuevo gasto</h2>
+        <input type="text" id="descripcion" placeholder="Descripción (ej: Almuerzo)" />
+        <input type="number" id="monto" placeholder="Monto ($)" />
+        <select id="categoria">
+          <option value="">Cargando categorías...</option>
+        </select>
+        <input type="date" id="fecha" />
+        <button class="primary" onclick="agregarGasto()">+ Agregar gasto</button>
+      </div>
+
+      <div class="card">
+        <h2>Últimos gastos</h2>
+        <div id="lista-gastos">Cargando...</div>
+      </div>
+    </div>
+
+    <!-- RESUMEN -->
+    <div id="resumen-section">
+      <div class="card">
+        <h2>Este mes</h2>
+        <div class="resumen-grid">
+          <div class="resumen-card">
+            <div class="valor" id="total-mes">$0</div>
+            <div class="label">Total gastado</div>
+          </div>
+          <div class="resumen-card">
+            <div class="valor" id="cantidad-gastos">0</div>
+            <div class="label">Transacciones</div>
+          </div>
+        </div>
+        <div id="resumen-categorias"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // ─── CONFIGURACIÓN SUPABASE ───
+  const SUPABASE_URL = 'https://yiwatjrsbxpgcgtnmoku.supabase.co'
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlpd2F0anJzYnhwZ2NndG5tb2t1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4MDU3NDYsImV4cCI6MjA5NTM4MTc0Nn0.Jj1Wy2yhkL1fSbtGHFes3Yr128Jpovz_gl-Hs4f8q8o'
+  const { createClient } = supabase
+  const db = createClient(SUPABASE_URL, SUPABASE_KEY)
+
+  // ─── INICIO ───
+  window.onload = async () => {
+    const { data: { session } } = await db.auth.getSession()
+    if (session) mostrarApp()
+    else mostrarAuth()
+
+    // Fecha de hoy por defecto
+    document.getElementById('fecha').valueAsDate = new Date()
+  }
+
+  // ─── AUTH ───
+  function mostrarAuth() {
+    document.getElementById('auth-section').style.display = 'block'
+    document.getElementById('app-section').style.display = 'none'
+  }
+
+  function mostrarApp() {
+    document.getElementById('auth-section').style.display = 'none'
+    document.getElementById('app-section').style.display = 'block'
+    mostrarTab('gastos')
+    cargarCategorias()
+    cargarGastos()
+  }
+
+  async function login() {
+    const email = document.getElementById('auth-email').value
+    const password = document.getElementById('auth-password').value
+    const { error } = await db.auth.signInWithPassword({ email, password })
+    if (error) mostrarMensaje(error.message, 'error')
+    else mostrarApp()
+  }
+
+  async function register() {
+    const email = document.getElementById('auth-email').value
+    const password = document.getElementById('auth-password').value
+    const { error } = await db.auth.signUp({ email, password })
+    if (error) mostrarMensaje(error.message, 'error')
+    else mostrarMensaje('¡Cuenta creada! Revisá tu email para confirmar.', 'ok')
+  }
+
+  async function logout() {
+    await db.auth.signOut()
+    mostrarAuth()
+  }
+
+  // ─── TABS ───
+  function mostrarTab(tab) {
+    document.getElementById('gastos-section').style.display = tab === 'gastos' ? 'block' : 'none'
+    document.getElementById('resumen-section').style.display = tab === 'resumen' ? 'block' : 'none'
+    document.querySelectorAll('.tab').forEach((t, i) => {
+      t.classList.toggle('active', (i === 0 && tab === 'gastos') || (i === 1 && tab === 'resumen'))
+    })
+    if (tab === 'resumen') cargarResumen()
+  }
+
+  // ─── CATEGORÍAS ───
+  async function cargarCategorias() {
+    const { data: { user } } = await db.auth.getUser()
+    const { data, error } = await db.from('categorias').select('*').eq('user_id', user.id)
+
+    const select = document.getElementById('categoria')
+
+    if (!data || data.length === 0) {
+      // Crear categorías por defecto
+      const defaults = ['🍔 Comida', '🚌 Transporte', '🎬 Ocio', '🏠 Hogar', '💊 Salud', '📚 Educación', '👕 Ropa', '📦 Otros']
+      for (const nombre of defaults) {
+        await db.from('categorias').insert({ nombre, user_id: user.id })
+      }
+      cargarCategorias()
+      return
+    }
+
+    select.innerHTML = data.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')
+  }
+
+  // ─── GASTOS ───
+  async function agregarGasto() {
+    const { data: { user } } = await db.auth.getUser()
+    const descripcion = document.getElementById('descripcion').value
+    const monto = parseFloat(document.getElementById('monto').value)
+    const categoria_id = document.getElementById('categoria').value
+    const fecha = document.getElementById('fecha').value
+
+    if (!descripcion || !monto) {
+      mostrarMensaje('Completá descripción y monto', 'error')
+      return
+    }
+
+    const { error } = await db.from('gastos').insert({ descripcion, monto, categoria_id, fecha, user_id: user.id })
+
+    if (error) mostrarMensaje('Error al guardar: ' + error.message, 'error')
+    else {
+      mostrarMensaje('¡Gasto guardado!', 'ok')
+      document.getElementById('descripcion').value = ''
+      document.getElementById('monto').value = ''
+      cargarGastos()
+    }
+  }
+
+  async function cargarGastos() {
+    const { data: { user } } = await db.auth.getUser()
+    const { data } = await db.from('gastos')
+      .select('*, categorias(nombre)')
+      .eq('user_id', user.id)
+      .order('fecha', { ascending: false })
+      .limit(20)
+
+    const lista = document.getElementById('lista-gastos')
+
+    if (!data || data.length === 0) {
+      lista.innerHTML = '<p style="color:#888; text-align:center;">Todavía no hay gastos cargados.</p>'
+      return
+    }
+
+    lista.innerHTML = data.map(g => `
+      <div class="gasto-item">
+        <div>
+          <div class="gasto-desc">${g.descripcion}</div>
+          <div class="gasto-cat">${g.categorias?.nombre || 'Sin categoría'} · ${g.fecha}</div>
+        </div>
+        <div class="gasto-monto">$${parseFloat(g.monto).toLocaleString('es-AR')}</div>
+      </div>
+    `).join('')
+  }
+
+  // ─── RESUMEN ───
+  async function cargarResumen() {
+    const { data: { user } } = await db.auth.getUser()
+    const hoy = new Date()
+    const primerDia = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0]
+
+    const { data } = await db.from('gastos')
+      .select('*, categorias(nombre)')
+      .eq('user_id', user.id)
+      .gte('fecha', primerDia)
+
+    if (!data) return
+
+    const total = data.reduce((sum, g) => sum + parseFloat(g.monto), 0)
+    document.getElementById('total-mes').textContent = '$' + total.toLocaleString('es-AR')
+    document.getElementById('cantidad-gastos').textContent = data.length
+
+    // Agrupar por categoría
+    const porCategoria = {}
+    data.forEach(g => {
+      const cat = g.categorias?.nombre || 'Sin categoría'
+      porCategoria[cat] = (porCategoria[cat] || 0) + parseFloat(g.monto)
+    })
+
+    const resumenCats = document.getElementById('resumen-categorias')
+    resumenCats.innerHTML = Object.entries(porCategoria)
+      .sort((a, b) => b[1] - a[1])
+      .map(([cat, monto]) => `
+        <div class="gasto-item">
+          <span>${cat}</span>
+          <strong>$${monto.toLocaleString('es-AR')}</strong>
+        </div>
+      `).join('')
+  }
+
+  // ─── UTILS ───
+  function mostrarMensaje(texto, tipo) {
+    const msgs = document.querySelectorAll('#mensaje')
+    msgs.forEach(m => {
+      m.textContent = texto
+      m.className = tipo
+      setTimeout(() => m.className = '', 3000)
+    })
+  }
+</script>
+</body>
+</html>
